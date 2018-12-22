@@ -2,8 +2,9 @@
 
 import copy
 from board import Board
-from ai_player import Ai
+from model import dqn_agent
 import numpy as np
+import sys
 
 class Game:
     """
@@ -65,7 +66,7 @@ class Game:
             self._board.print_board()
             self.push()
             order = input('Your Move(wsad,e:exit): ')
-            while order != 'e' and self._board.move(order) == 0:
+            while order != 'e' and self._board.move(order) == -1:
                 order = input('Your Move(wsad,e:exit): ')
                 if order == 'e':
                     break
@@ -133,8 +134,7 @@ class Game:
 
     def new_game_by_ai(self,name,parameter,quiet=1):
         self._board = Board(parameter)
-        player = Ai()
-        player.new(name)
+        player = dqn_agent({'name':name}, load=True)
         endgame_flag = self._board.gameend()
         while endgame_flag == 0:
             self._board.print_board()
@@ -142,8 +142,8 @@ class Game:
             if quiet != 1:
                 if input('next?(y/n) ') != 'n':
                     board = copy.deepcopy(self._board)
-                    order = player.move(board)
-                    if self._board.move(order) == 0:
+                    order = player.play_action(board)
+                    if self._board.move(order) == -1:
                         print('AI error.')
                         break
                     self.push(order)
@@ -153,7 +153,7 @@ class Game:
             else:
                 board = copy.deepcopy(self._board)
                 order = player.move(board)
-                if self._board.move(order) == 0:
+                if self._board.move(order) == -1:
                     print('AI error.')
                     break
                 self.push(order)
@@ -166,29 +166,29 @@ class Game:
             self.save(input('Name of the game: '))
         self.idle()
 
-    def gen_search_data(self,parameter):
-        player = Ai()
-        player.new('ss')
-        rounds = eval(input('Number of rounds: '))
-        for idx in range(rounds):
-            print('Round: ',idx)
-            self._board = Board(parameter)
-            endgame_flag = self._board.gameend()
-            while endgame_flag == 0:
-                self.push()
-                board = copy.deepcopy(self._board)
-                move = player.simple_search(board)
-                if self._board.move(move) == 0:
-                    print('AI error.')
-                    break
-                self.push(move)
-                self._board.next()
-                endgame_flag = self._board.gameend()
-            if endgame_flag == 1:
-                print('Game over!')
-        if input('Do you want to save the game?(y/n) ') == 'y':
-            self.save(input('Name of the game: '))
-        self.idle()
+    # def gen_search_data(self,parameter):
+    #     player = Ai()
+    #     player.new('ss')
+    #     rounds = eval(input('Number of rounds: '))
+    #     for idx in range(rounds):
+    #         print('Round: ',idx)
+    #         self._board = Board(parameter)
+    #         endgame_flag = self._board.gameend()
+    #         while endgame_flag == 0:
+    #             self.push()
+    #             board = copy.deepcopy(self._board)
+    #             move = player.simple_search(board)
+    #             if self._board.move(move) == 0:
+    #                 print('AI error.')
+    #                 break
+    #             self.push(move)
+    #             self._board.next()
+    #             endgame_flag = self._board.gameend()
+    #         if endgame_flag == 1:
+    #             print('Game over!')
+    #     if input('Do you want to save the game?(y/n) ') == 'y':
+    #         self.save(input('Name of the game: '))
+    #     self.idle()
 
     def replay(self,filename):
         self._load_game(filename)
@@ -207,47 +207,49 @@ class Game:
 
     def auto_train_ai(self):
         name = input('Name of the AI: ')
-        player = dqn_agent(N = 10000,
-            nS = 16,
-            ep_start = 1.,
-            ep_end = 0.1,
-            ep_rate = 0.001,
-            batch_size = 32,
-            a_list = ['w','s','a','d'],
-            C = 200,
-            lrate = 0.001,
-        )
+        params = {'name':name,
+            'N':10000,
+            'shape':[4,4],
+            'ep_start':1.,
+            'ep_end':0.1,
+            'ep_rate':0.01,
+            'batch_size':eval(input('Batch size: ')),
+            'a_list':['w','s','a','d'],
+            'C':500,
+            'lrate':0.001,
+        }
+        player = dqn_agent(params)
         rounds = eval(input('Number of rounds: '))
-        batch_size = eval(input('Batch size: '))
         counter_saved = 0
         for idx in range(rounds):
-            print('Round ',idx)
             self._game = list()
             self._board = Board(player.game_para)
             endgame_flag = self._board.gameend()
             while endgame_flag == 0:
                 self.push()
                 board = copy.deepcopy(self._board)
-                order = player.move(board)
-                if self._board.move(order) == 0:
-                    print('AI error.')
-                    break
+                order = player.train_action(board)
+                rew = self._board.move(order, quiet=1)
+                if rew == -1:
+                    continue
                 self.push(order)
                 self._board.next()
+                board_nxt = copy.deepcopy(self._board)
                 endgame_flag = self._board.gameend()
-            if endgame_flag == 1:
-                self._board.print_board()
-                print('Game over!')
-            position = player.insert_cache_queue(np.max(self._board))
-            # position > -2 means every game will be learned
-            # to learn newly inserted games set to > -1
-            if position > -2:
-                self.save('cached_game'+str(position))
-                # counter_saved += 1
-                # filenames = ['cached_game'+str(i) for i in
-                #   range(min(counter_saved,player.score_list_size))]
-                filenames = ['cached_game'+str(position)]
-                player.learn(batch_size,filenames,quiet=1)
+                if endgame_flag:
+                    rew = self._board.find_max()['value']
+                    print('\rRound: {}, Total: {}        '.format(
+                        idx, np.sum(self._board)), end='')
+                    sys.stdout.flush()
+                obs = {
+                    's': board,
+                    'a': order,
+                    'r': rew,
+                    'ss': board_nxt,
+                    'done': endgame_flag
+                }
+                player.perceive(obs)
+                player.train()
         player.save()
         self.idle()
 

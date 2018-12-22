@@ -184,5 +184,5 @@ class Board(list):
         if temp[:] == self[:]:
             if quiet == 0:
                 print('illegal move!')
-            return 0
+            return -1
         return 1

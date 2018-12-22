@@ -1,4 +1,6 @@
 import numpy as np
+import sys
+import pickle
 import tensorflow as tf
 from utils import greedy, ep_greedy
 
@@ -10,11 +12,11 @@ def clipped_error(x):
       return tf.where(tf.abs(x) < 1.0, 0.5 * tf.square(x), tf.abs(x) - 0.5)
 
 class nn_model:
-    def __init__(self, nS, a_list, name, lrate, load = False):
+    def __init__(self, shape, a_list, name, lrate, load = False):
         self.lrate = lrate
         self._name = name
         self._path = 'trained_agents/'
-        self.nS = nS
+        self.shape = shape
         self.a_list = a_list
         self.w = {}
         self.w_t = {}
@@ -42,8 +44,8 @@ class nn_model:
     def get_loss(self, states, actions, targets):
         if hasattr(self, 'loss'):
             feed_dict = {
-                'states:0':states,
-                'actions:0':actions,
+                'states:0':states.reshape(list(np.shape(states)) + [1]),
+                'actions:0':[self.a_list.index(a) for a in actions],
                 'targets:0':targets,
             }
             return self._sess.run(self.loss, feed_dict=feed_dict)
@@ -56,19 +58,29 @@ class nn_model:
     def _build(self):
         with self._graph.as_default():
             global_step = tf.Variable(0, trainable=False, name='global')
-            s = tf.placeholder(dtype=tf.float32, shape=[None, self.nS], name='states')
+            s = tf.placeholder(dtype=tf.float32, shape=[None] + self.shape + [1], name='states')
             a = tf.placeholder(dtype=tf.uint8, shape=[None], name='actions')
             y = tf.placeholder(dtype=tf.float32, shape=[None], name='targets')
             onehot = tf.one_hot(a, depth=len(self.a_list))
             output_dim = len(self.a_list)
             with tf.variable_scope('train'):
-                self.w['l1w'] = l1w = tf.Variable(
-                    tf.truncated_normal((self.nS,64)))
-                self.w['l1b'] = l1b = tf.Variable(
-                    tf.constant(0.01, shape=[64]))
-                L1 = tf.nn.relu(tf.matmul(s, l1w) + l1b)
+                self.w['l1c1w'] = l1c1w = tf.Variable(
+                    tf.truncated_normal([2, 1, 1, 10]))
+                self.w['l1c1b'] = l1c1b = tf.Variable(
+                    tf.constant(0.01, shape=[10]))
+                conv1 = tf.nn.conv2d(s, l1c1w, [1,1,1,1], 'SAME')
+                l1c1 = tf.nn.relu(conv1 + l1c1b)
+                self.w['l1c2w'] = l1c2w = tf.Variable(
+                    tf.truncated_normal([1, 2, 1, 10]))
+                self.w['l1c2b'] = l1c2b = tf.Variable(
+                    tf.constant(0.01, shape=[10]))
+                conv2 = tf.nn.conv2d(s, l1c2w, [1,1,1,1], 'SAME')
+                l1c2 = tf.nn.relu(conv2 + l1c2b)
+                L1 = tf.concat([tf.reshape(l1c1, [-1, 160]),
+                    tf.reshape(l1c2, [-1, 160])], 1)
                 self.w['l2w'] = l2w = tf.Variable(
-                    tf.truncated_normal((64,output_dim)))
+                    tf.truncated_normal([320, output_dim])
+                )
                 self.w['l2b'] = l2b = tf.Variable(
                     tf.constant(0.01, shape=[output_dim]))
                 self.pred = tf.matmul(L1,l2w) + l2b
@@ -77,15 +89,25 @@ class nn_model:
                     (q_act  - y)**2) \
                     # + self.lambda_ * (tf.norm(l1w) + tf.norm(l4w))
             with tf.variable_scope('target'):
-                self.w_t['l1w'] = l1w = tf.Variable(
-                    tf.constant(0., shape=[self.nS,64]))
-                self.w_t['l1b'] = l1b = tf.Variable(
-                    tf.constant(0., shape=[64]))
-                L1 = tf.nn.relu(tf.matmul(s, l1w) + l1b)
+                self.w_t['l1c1w'] = l1c1w = tf.Variable(
+                    tf.truncated_normal([2, 1, 1, 10]))
+                self.w_t['l1c1b'] = l1c1b = tf.Variable(
+                    tf.constant(0.01, shape=[10]))
+                conv1 = tf.nn.conv2d(s, l1c1w, [1,1,1,1], 'SAME')
+                l1c1 = tf.nn.relu(conv1 + l1c1b)
+                self.w_t['l1c2w'] = l1c2w = tf.Variable(
+                    tf.truncated_normal([1, 2, 1, 10]))
+                self.w_t['l1c2b'] = l1c2b = tf.Variable(
+                    tf.constant(0.01, shape=[10]))
+                conv2 = tf.nn.conv2d(s, l1c2w, [1,1,1,1], 'SAME')
+                l1c2 = tf.nn.relu(conv2 + l1c2b)
+                L1 = tf.concat([tf.reshape(l1c1, [-1, 160]),
+                    tf.reshape(l1c2, [-1, 160])], 1)
                 self.w_t['l2w'] = l2w = tf.Variable(
-                    tf.constant(0., shape=[64,output_dim]))
+                    tf.truncated_normal([320, output_dim])
+                )
                 self.w_t['l2b'] = l2b = tf.Variable(
-                    tf.constant(0., shape=[output_dim]))
+                    tf.constant(0.01, shape=[output_dim]))
                 self.pred_t = tf.matmul(L1,l2w) + l2b
             with tf.variable_scope('optimize'):
                 optimizer = tf.train.AdamOptimizer(learning_rate=
@@ -112,8 +134,8 @@ class nn_model:
     def fit(self, states, actions, targets):
         with self._graph.as_default():
             feed_dict = {
-                'states:0':states,
-                'actions:0':actions,
+                'states:0':states.reshape(list(np.shape(states)) + [1]),
+                'actions:0':[self.a_list.index(a) for a in actions],
                 'targets:0':targets,
             }
             self._sess.run(self.train_op, feed_dict)
@@ -125,14 +147,14 @@ class nn_model:
     # evaluate the trained network
     def Q(self, state):
         feed_dict = {
-            'states:0': np.array(state).reshape((1,-1)),
+            'states:0': np.array(state).reshape([1] + list(np.shape(state)) + [1]),
         }
         return self._sess.run(self.pred, feed_dict)[0]
 
     # evaluate the target network
     def Qhat(self, state):
         feed_dict = {
-            'states:0': np.array(state).reshape((1,-1)),
+            'states:0': np.array(state).reshape([1] + list(np.shape(state)) + [1]),
         }
         return self._sess.run(self.pred_t, feed_dict)[0]
 
@@ -167,11 +189,12 @@ class dqn_agent:
         self.Qhat = self.model.Qhat
         self.ep = lambda x: self.ep_start - min(self.ep_rate *
             (max(x - self.learn_starts, 0)), self.ep_start - self.ep_end)
+        self.game_para = {'size': 4, 'odd_2': 0.9}
 
-    def new(self, name, N, nS, ep_start, ep_end, ep_rate, batch_size,
+    def new(self, name, N, shape, ep_start, ep_end, ep_rate, batch_size,
         a_list, C, lrate, gamma = 1, learn_starts = 5):
         self.name = name
-        self.nS = nS
+        self.shape = shape
         self.ep_start = ep_start
         self.ep_end = ep_end
         self.ep_rate = ep_rate
@@ -184,7 +207,7 @@ class dqn_agent:
 
         self.D = memory(N)
         self.nA = len(a_list)
-        self.model = nn_model(nS, a_list, name, lrate) # implement two networks in one model with an update method.
+        self.model = nn_model(shape, a_list, name, lrate) # implement two networks in one model with an update method.
         self.iter = 0
         self.episode = 0
 
@@ -192,7 +215,7 @@ class dqn_agent:
         with open(self._path + name + '-params','rb') as f:
             params = pickle.load(f)
             self.name = name
-            self.nS = params['nS']
+            self.shape = params['shape']
             self.ep_start = params['ep_start']
             self.ep_end = params['ep_end']
             self.ep_rate = params['ep_rate']
@@ -208,14 +231,14 @@ class dqn_agent:
             self.episode = params['episode']
         with open(self._path + name + '-memory','rb') as f:
             self.D = pickle.load(f)
-        self.model = nn_model(self.nS, self.a_list, name, self.lrate, load=True)
+        self.model = nn_model(self.shape, self.a_list, name, self.lrate, load=True)
 
     def save(self):
         with open(self._path + self.name + '-memory','wb') as f:
             pickle.dump(self.D, f)
         with open(self._path + self.name + '-params', 'wb') as f:
             params = {
-                'nS': self.nS,
+                'shape': self.shape,
                 'ep_start': self.ep_start,
                 'ep_end': self.ep_end,
                 'ep_rate': self.ep_rate,
@@ -251,7 +274,7 @@ class dqn_agent:
         y = np.empty(self.batch_size)
         s_batch = []
         a_batch = []
-        for idx in range(batch_size):
+        for idx in range(self.batch_size):
             if batch[idx]['done']:
                 y[idx] = batch[idx]['r']
             else:
@@ -262,9 +285,7 @@ class dqn_agent:
         self.model.fit(np.array(s_batch), np.array(a_batch), y)
         if self.iter % 100 == 0:
             loss = self.model.get_loss(np.array(s_batch), np.array(a_batch), y)
-            print('\repisode: {}, loss: {:<.4}  '.format(
-                        self.episode, loss),end='')
-            sys.stdout.flush()
+            print('episode: {}, loss: {:<.4}  '.format(
+                        self.episode, loss))
         if self.iter % self.C == self.C - 1:
             self.model.update()
-        self.iter += 1
