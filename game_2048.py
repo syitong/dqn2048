@@ -14,6 +14,7 @@ class Game:
     """
     def __init__(self):
         self.pow = './game_archives/'
+        self.agent_path = 'trained_agents/'
         self.idle()
 
     def idle(self):
@@ -152,7 +153,7 @@ class Game:
                     break
             else:
                 board = copy.deepcopy(self._board)
-                order = player.move(board)
+                order = player.play_action(board)
                 if self._board.move(order) == -1:
                     print('AI error.')
                     break
@@ -207,18 +208,27 @@ class Game:
 
     def auto_train_ai(self):
         name = input('Name of the AI: ')
-        params = {'name':name,
-            'N':10000,
-            'shape':[4,4],
-            'ep_start':1.,
-            'ep_end':0.1,
-            'ep_rate':0.01,
-            'batch_size':eval(input('Batch size: ')),
-            'a_list':['w','s','a','d'],
-            'C':500,
-            'lrate':0.001,
-        }
-        player = dqn_agent(params)
+        try:
+            with open(self.agent_path + name + '-params','rb') as f:
+                pass
+        except:
+            print('New agent!')
+            params = {'name':name,
+                'N':10000,
+                'shape':[4,4],
+                'ep_start':1.,
+                'ep_end':0.1,
+                'ep_rate':0.01,
+                'batch_size':eval(input('Batch size: ')),
+                'a_list':['w','s','a','d'],
+                'C':500,
+                'lrate':0.001,
+            }
+            player = dqn_agent(params)
+        else:
+            print('Find saved agent with the same name. Load it.')
+            params = {'name': name}
+            player = dqn_agent(params, load = True)
         rounds = eval(input('Number of rounds: '))
         counter_saved = 0
         for idx in range(rounds):
