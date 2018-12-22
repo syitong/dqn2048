@@ -218,7 +218,7 @@ class Game:
                 'shape':[4,4],
                 'ep_start':1.,
                 'ep_end':0.1,
-                'ep_rate':0.01,
+                'ep_rate':0.001,
                 'batch_size':eval(input('Batch size: ')),
                 'a_list':['w','s','a','d'],
                 'C':500,
@@ -226,11 +226,25 @@ class Game:
             }
             player = dqn_agent(params)
         else:
-            print('Find saved agent with the same name. Load it.')
-            params = {'name': name}
-            player = dqn_agent(params, load = True)
+            print('Find saved agent with the same name.')
+            if input('Do you want to 1. load it, 2. overwrite it?') == 1:
+                params = {'name': name}
+                player = dqn_agent(params, load = True)
+            else:
+                params = {'name':name,
+                    'N':10000,
+                    'shape':[4,4],
+                    'ep_start':1.,
+                    'ep_end':0.1,
+                    'ep_rate':0.001,
+                    'batch_size':eval(input('Batch size: ')),
+                    'a_list':['w','s','a','d'],
+                    'C':500,
+                    'lrate':0.001,
+                }
+                player = dqn_agent(params)
         rounds = eval(input('Number of rounds: '))
-        counter_saved = 0
+        best = 0
         for idx in range(rounds):
             self._game = list()
             self._board = Board(player.game_para)
@@ -248,8 +262,11 @@ class Game:
                 endgame_flag = self._board.gameend()
                 if endgame_flag:
                     rew = self._board.find_max()['value']
-                    print('\rRound: {}, Total: {}        '.format(
-                        idx, np.sum(self._board)), end='')
+                    total = np.sum(self._board)
+                    if total > best:
+                        best = total
+                    print('\rTotal Score: {}        '.format(
+                        total), end='')
                     sys.stdout.flush()
                 obs = {
                     's': board,
@@ -260,6 +277,7 @@ class Game:
                 }
                 player.perceive(obs)
                 player.train()
+        print('\nBest Score: ' + str(best))
         player.save()
         self.idle()
 
