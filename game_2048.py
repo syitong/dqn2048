@@ -218,7 +218,7 @@ class Game:
             player = dqn_agent(params)
         else:
             print('Find saved agent with the same name.')
-            if input('Do you want to 1. load it, 2. overwrite it?') == 1:
+            if input('Do you want to 1. load it, 2. overwrite it?') == '1':
                 params = {'name': name}
                 player = dqn_agent(params, load = True)
             else:
