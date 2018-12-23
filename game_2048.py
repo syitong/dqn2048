@@ -240,7 +240,7 @@ class Game:
                     'batch_size':eval(input('Batch size: ')),
                     'a_list':['w','s','a','d'],
                     'C':500,
-                    'lrate':0.001,
+                    'lrate':1,
                 }
                 player = dqn_agent(params)
         rounds = eval(input('Number of rounds: '))
@@ -254,10 +254,11 @@ class Game:
                 board = copy.deepcopy(self._board)
                 order = player.train_action(board)
                 rew = self._board.move(order, quiet=1)
-                if rew == -1:
-                    continue
+                if rew > 0:
+                    self._board.next()
+                else:
+                    rew *= 100
                 self.push(order)
-                self._board.next()
                 board_nxt = copy.deepcopy(self._board)
                 endgame_flag = self._board.gameend()
                 if endgame_flag:
