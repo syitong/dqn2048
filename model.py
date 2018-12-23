@@ -64,51 +64,94 @@ class nn_model:
             onehot = tf.one_hot(a, depth=len(self.a_list))
             output_dim = len(self.a_list)
             with tf.variable_scope('train'):
+                # conv layer 1
                 self.w['l1c1w'] = l1c1w = tf.Variable(
-                    tf.truncated_normal([2, 1, 1, 10]))
+                    tf.truncated_normal([2, 1, 1, 10]) / 100)
                 self.w['l1c1b'] = l1c1b = tf.Variable(
                     tf.constant(0.01, shape=[10]))
                 conv1 = tf.nn.conv2d(s, l1c1w, [1,1,1,1], 'SAME')
                 l1c1 = tf.nn.relu(conv1 + l1c1b)
                 self.w['l1c2w'] = l1c2w = tf.Variable(
-                    tf.truncated_normal([1, 2, 1, 10]))
+                    tf.truncated_normal([1, 2, 1, 10]) / 100)
                 self.w['l1c2b'] = l1c2b = tf.Variable(
                     tf.constant(0.01, shape=[10]))
                 conv2 = tf.nn.conv2d(s, l1c2w, [1,1,1,1], 'SAME')
                 l1c2 = tf.nn.relu(conv2 + l1c2b)
-                L1 = tf.concat([tf.reshape(l1c1, [-1, 160]),
-                    tf.reshape(l1c2, [-1, 160])], 1)
-                self.w['l2w'] = l2w = tf.Variable(
-                    tf.truncated_normal([320, output_dim])
+                # conv layer 2
+                self.w['l2c1w'] = l2c1w = tf.Variable(
+                    tf.truncated_normal([1, 2, 10, 10]) / 100)
+                self.w['l2c1b'] = l2c1b = tf.Variable(
+                    tf.constant(0.01, shape=[10]))
+                conv3 = tf.nn.conv2d(l1c1, l2c1w, [1,1,1,1], 'VALID')
+                l2c1 = tf.nn.relu(conv3 + l2c1b)
+                self.w['l2c2w'] = l2c2w = tf.Variable(
+                    tf.truncated_normal([2, 1, 10, 10]) / 100)
+                self.w['l2c2b'] = l2c2b = tf.Variable(
+                    tf.constant(0.01, shape=[10]))
+                conv4 = tf.nn.conv2d(l1c2, l2c2w, [1,1,1,1], 'VALID')
+                l2c2 = tf.nn.relu(conv4 + l2c2b)
+                # fully connected layer
+                L3 = tf.concat([tf.reshape(l2c1, [-1, 120]),
+                    tf.reshape(l2c2, [-1, 120])], 1)
+                self.w['l3w'] = l3w = tf.Variable(
+                    tf.truncated_normal([240, 100]) / 100
                 )
-                self.w['l2b'] = l2b = tf.Variable(
+                self.w['l3b'] = l3b = tf.Variable(
+                    tf.constant(0.01, shape=[100]))
+                L4 = tf.nn.relu(tf.matmul(L3,l3w) + l3b)
+                self.w['l4w'] = l4w = tf.Variable(
+                    tf.truncated_normal([100, output_dim]) / 100
+                )
+                self.w['l4b'] = l4b = tf.Variable(
                     tf.constant(0.01, shape=[output_dim]))
-                self.pred = tf.matmul(L1,l2w) + l2b
+                self.pred = tf.matmul(L4, l4w) + l4b
                 q_act = tf.reduce_sum(self.pred * onehot, reduction_indices=1)
                 self.loss = tf.reduce_mean(
                     (q_act  - y)**2) \
                     # + self.lambda_ * (tf.norm(l1w) + tf.norm(l4w))
             with tf.variable_scope('target'):
+                # conv layer 1
                 self.w_t['l1c1w'] = l1c1w = tf.Variable(
-                    tf.truncated_normal([2, 1, 1, 10]))
+                    tf.truncated_normal([2, 1, 1, 10]) / 100)
                 self.w_t['l1c1b'] = l1c1b = tf.Variable(
                     tf.constant(0.01, shape=[10]))
                 conv1 = tf.nn.conv2d(s, l1c1w, [1,1,1,1], 'SAME')
                 l1c1 = tf.nn.relu(conv1 + l1c1b)
                 self.w_t['l1c2w'] = l1c2w = tf.Variable(
-                    tf.truncated_normal([1, 2, 1, 10]))
+                    tf.truncated_normal([1, 2, 1, 10]) / 100)
                 self.w_t['l1c2b'] = l1c2b = tf.Variable(
                     tf.constant(0.01, shape=[10]))
                 conv2 = tf.nn.conv2d(s, l1c2w, [1,1,1,1], 'SAME')
                 l1c2 = tf.nn.relu(conv2 + l1c2b)
-                L1 = tf.concat([tf.reshape(l1c1, [-1, 160]),
-                    tf.reshape(l1c2, [-1, 160])], 1)
-                self.w_t['l2w'] = l2w = tf.Variable(
-                    tf.truncated_normal([320, output_dim])
+                # conv layer 2
+                self.w_t['l2c1w'] = l2c1w = tf.Variable(
+                    tf.truncated_normal([1, 2, 10, 10]) / 100)
+                self.w_t['l2c1b'] = l2c1b = tf.Variable(
+                    tf.constant(0.01, shape=[10]))
+                conv3 = tf.nn.conv2d(l1c1, l2c1w, [1,1,1,1], 'VALID')
+                l2c1 = tf.nn.relu(conv3 + l2c1b)
+                self.w_t['l2c2w'] = l2c2w = tf.Variable(
+                    tf.truncated_normal([2, 1, 10, 10]) / 100)
+                self.w_t['l2c2b'] = l2c2b = tf.Variable(
+                    tf.constant(0.01, shape=[10]))
+                conv4 = tf.nn.conv2d(l1c2, l2c2w, [1,1,1,1], 'VALID')
+                l2c2 = tf.nn.relu(conv4 + l2c2b)
+                # fully connected layer
+                L3 = tf.concat([tf.reshape(l2c1, [-1, 120]),
+                    tf.reshape(l2c2, [-1, 120])], 1)
+                self.w_t['l3w'] = l3w = tf.Variable(
+                    tf.truncated_normal([240, 100]) / 100
                 )
-                self.w_t['l2b'] = l2b = tf.Variable(
+                self.w_t['l3b'] = l3b = tf.Variable(
+                    tf.constant(0.01, shape=[100]))
+                L4 = tf.nn.relu(tf.matmul(L3,l3w) + l3b)
+                self.w_t['l4w'] = l4w = tf.Variable(
+                    tf.truncated_normal([100, output_dim]) / 100
+                )
+                self.w_t['l4b'] = l4b = tf.Variable(
                     tf.constant(0.01, shape=[output_dim]))
-                self.pred_t = tf.matmul(L1,l2w) + l2b
+                self.pred_t = tf.matmul(L4, l4w) + l4b
+
             with tf.variable_scope('optimize'):
                 optimizer = tf.train.AdamOptimizer(learning_rate=
                     self.lrate)

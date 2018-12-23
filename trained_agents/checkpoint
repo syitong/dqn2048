@@ -1,2 +1,2 @@
-model_checkpoint_path: "5k-32-agent"
-all_model_checkpoint_paths: "5k-32-agent"
+model_checkpoint_path: "b32e-3"
+all_model_checkpoint_paths: "b32e-3"

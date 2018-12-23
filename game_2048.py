@@ -141,24 +141,15 @@ class Game:
             self._board.print_board()
             self.push()
             if quiet != 1:
-                if input('next?(y/n) ') != 'n':
-                    board = copy.deepcopy(self._board)
-                    order = player.play_action(board)
-                    if self._board.move(order) == -1:
-                        print('AI error.')
-                        break
-                    self.push(order)
-                    self._board.next()
-                else:
+                if input('next?(y/n) ') == 'n':
                     break
-            else:
-                board = copy.deepcopy(self._board)
-                order = player.play_action(board)
-                if self._board.move(order) == -1:
-                    print('AI error.')
-                    break
-                self.push(order)
-                self._board.next()
+            board = np.ma.log2(self._board).filled(0.)
+            order = player.play_action(board)
+            if self._board.move(order) == -1:
+                print('AI error.')
+                break
+            self.push(order)
+            self._board.next()
             endgame_flag = self._board.gameend()
         if endgame_flag == 1:
             self._board.print_board()
@@ -217,11 +208,11 @@ class Game:
                 'N':10000,
                 'shape':[4,4],
                 'ep_start':1.,
-                'ep_end':0.1,
+                'ep_end':0.01,
                 'ep_rate':0.001,
                 'batch_size':eval(input('Batch size: ')),
                 'a_list':['w','s','a','d'],
-                'C':500,
+                'C':1000,
                 'lrate':0.001,
             }
             player = dqn_agent(params)
@@ -239,8 +230,8 @@ class Game:
                     'ep_rate':0.001,
                     'batch_size':eval(input('Batch size: ')),
                     'a_list':['w','s','a','d'],
-                    'C':500,
-                    'lrate':1,
+                    'C':1000,
+                    'lrate':0.001,
                 }
                 player = dqn_agent(params)
         rounds = eval(input('Number of rounds: '))
@@ -250,30 +241,28 @@ class Game:
             self._board = Board(player.game_para)
             endgame_flag = self._board.gameend()
             while endgame_flag == 0:
-                self.push()
+                # self.push()
                 board = copy.deepcopy(self._board)
                 order = player.train_action(board)
                 rew = self._board.move(order, quiet=1)
+                board_nxt = copy.deepcopy(self._board)
+                endgame_flag = self._board.gameend()
                 if rew > 0:
                     self._board.next()
                 else:
-                    rew *= 100
-                self.push(order)
-                board_nxt = copy.deepcopy(self._board)
-                endgame_flag = self._board.gameend()
+                    endgame_flag = 1
+                # self.push(order)
                 if endgame_flag:
-                    rew = self._board.find_max()['value']
                     total = np.sum(self._board)
                     if total > best:
                         best = total
-                    print('\rTotal Score: {}        '.format(
-                        total), end='')
-                    sys.stdout.flush()
+                    print('Total Score: {}        '.format(
+                        total))
                 obs = {
-                    's': board,
+                    's': np.ma.log2(board).filled(0),
                     'a': order,
                     'r': rew,
-                    'ss': board_nxt,
+                    'ss': np.ma.log2(board_nxt).filled(0),
                     'done': endgame_flag
                 }
                 player.perceive(obs)
